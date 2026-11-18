@@ -1,0 +1,9 @@
+export const LICENSE_ORIGIN = 'https://license.dentisuite.xyz'
+export const ACTIVATE_URL = `${LICENSE_ORIGIN}/api/public/license/activate`
+export const VALIDATE_URL = `${LICENSE_ORIGIN}/api/public/license/validate`
+export const REFRESH_URL = `${LICENSE_ORIGIN}/api/public/license/refresh`
+export const PRODUCT = 'WeFlowPneus'
+export const PRODUCT_ALT = 'WEFLOW_PNEUS'
+export const OFFLINE_GRACE_PERIOD_DAYS = 7
+export const REFRESH_WITHIN_HOURS = 48
+export const FETCH_TIMEOUT_MS = 15_000
