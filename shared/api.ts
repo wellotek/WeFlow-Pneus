@@ -15,6 +15,8 @@ import type {
   Sale,
   Service,
   ServiceOrder,
+  TaxRate,
+  SupplierPayment,
   StoreProfile,
   Supplier,
   TireFilter,
@@ -33,19 +35,36 @@ export interface WeFlowPneusApi {
     validate: () => Promise<LicenseUiState>
   }
 
+  // App & Zoom
+  app: {
+    getZoom: () => Promise<number>
+    setZoom: (factor: number) => Promise<number>
+  }
+
+  // Media & Images
+  media: {
+    uploadImage: (folder: 'products' | 'customers' | 'vehicles', fileData: string, fileName?: string) => Promise<{ success: boolean; path: string }>
+    deleteImage: (filePath: string) => Promise<boolean>
+  }
+
   // Profile & Settings
   settings: {
     getProfile: () => Promise<StoreProfile>
     updateProfile: (profile: Partial<StoreProfile>) => Promise<StoreProfile>
+    listTaxRates: (includeInactive?: boolean) => Promise<TaxRate[]>
+    createTaxRate: (data: Omit<TaxRate, 'id' | 'created_at'>) => Promise<TaxRate>
+    updateTaxRate: (id: string, data: Partial<TaxRate>) => Promise<TaxRate>
+    deleteTaxRate: (id: string) => Promise<boolean>
   }
 
   // Products & Tires
   products: {
     list: (filter?: TireFilter) => Promise<Product[]>
     get: (id: string) => Promise<Product | null>
-    create: (data: Omit<Product, 'id' | 'created_at' | 'updated_at'>) => Promise<Product>
+    create: (data: Partial<Product> & { designation?: string }) => Promise<Product>
     update: (id: string, data: Partial<Product>) => Promise<Product>
     delete: (id: string) => Promise<boolean>
+    archive: (id: string) => Promise<boolean>
     searchDimensions: (query: string) => Promise<string[]>
   }
 
@@ -76,9 +95,12 @@ export interface WeFlowPneusApi {
     create: (data: Omit<Customer, 'id' | 'balance_due' | 'created_at'>) => Promise<Customer>
     update: (id: string, data: Partial<Customer>) => Promise<Customer>
     delete: (id: string) => Promise<boolean>
+    archive: (id: string) => Promise<boolean>
     getVehicles: (customerId: string) => Promise<CustomerVehicle[]>
     createVehicle: (data: Omit<CustomerVehicle, 'id' | 'created_at'>) => Promise<CustomerVehicle>
+    updateVehicle: (id: string, data: Partial<CustomerVehicle>) => Promise<CustomerVehicle>
     deleteVehicle: (id: string) => Promise<boolean>
+    archiveVehicle: (id: string) => Promise<boolean>
   }
 
   // Suppliers & Purchases
@@ -88,13 +110,18 @@ export interface WeFlowPneusApi {
     create: (data: Omit<Supplier, 'id' | 'balance_due' | 'created_at'>) => Promise<Supplier>
     update: (id: string, data: Partial<Supplier>) => Promise<Supplier>
     delete: (id: string) => Promise<boolean>
+    archive: (id: string) => Promise<boolean>
+    listPayments: (supplierId?: string) => Promise<SupplierPayment[]>
+    addPayment: (data: Omit<SupplierPayment, 'id' | 'created_at'>) => Promise<SupplierPayment>
   }
   purchases: {
     list: () => Promise<Purchase[]>
     get: (id: string) => Promise<Purchase | null>
     create: (data: any) => Promise<Purchase>
     receive: (id: string) => Promise<Purchase>
+    receiveItems: (id: string, receivedItems: { itemId: string; receivedQty: number }[]) => Promise<Purchase>
     delete: (id: string) => Promise<boolean>
+    archive: (id: string) => Promise<boolean>
   }
 
   // Sales & POS
@@ -104,6 +131,7 @@ export interface WeFlowPneusApi {
     create: (data: any) => Promise<Sale>
     addPayment: (saleId: string, amount: number, paymentMethod: string, note?: string) => Promise<Sale>
     cancel: (id: string, reason?: string) => Promise<boolean>
+    archive: (id: string) => Promise<boolean>
   }
 
   // Quotations
@@ -112,6 +140,7 @@ export interface WeFlowPneusApi {
     get: (id: string) => Promise<Quotation | null>
     create: (data: any) => Promise<Quotation>
     update: (id: string, data: any) => Promise<Quotation>
+    duplicate: (id: string) => Promise<Quotation>
     convertToSale: (id: string) => Promise<Sale>
     delete: (id: string) => Promise<boolean>
   }
@@ -143,7 +172,9 @@ export interface WeFlowPneusApi {
     list: () => Promise<WarrantyClaim[]>
     get: (id: string) => Promise<WarrantyClaim | null>
     create: (data: any) => Promise<WarrantyClaim>
+    update: (id: string, data: any) => Promise<WarrantyClaim>
     updateStatus: (id: string, status: string, notes?: string) => Promise<WarrantyClaim>
+    archive: (id: string) => Promise<boolean>
   }
 
   // Cash Register & Expenses
@@ -181,6 +212,8 @@ export interface WeFlowPneusApi {
     printLabels: (labels: LabelPrintConfig[]) => Promise<void>
     exportPdfLabels: (labels: LabelPrintConfig[]) => Promise<{ cancelled: boolean; path?: string }>
     exportReportPdf: (reportType: string, period?: string) => Promise<{ cancelled: boolean; path?: string }>
+    exportCsv: (filename: string, headers: string[], rows: (string | number)[][]) => Promise<{ cancelled: boolean; path?: string }>
+    exportListPdf: (title: string, columns: { header: string; dataKey: string }[], rows: any[], options?: any) => Promise<{ cancelled: boolean; path?: string }>
     getPrinters: () => Promise<string[]>
   }
 

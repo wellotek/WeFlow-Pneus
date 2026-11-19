@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Plus,
@@ -11,7 +11,14 @@ import {
   Printer,
   X,
   Check,
-  Disc
+  Disc,
+  Download,
+  FileText,
+  Camera,
+  Archive,
+  CheckCircle2,
+  AlertTriangle,
+  Package
 } from 'lucide-react'
 import type { Product, TireFilter } from '@shared/types'
 import { formatCurrencyDA, isRtlLocale } from '@shared/locales'
@@ -33,38 +40,45 @@ export const Tires: React.FC = () => {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Form State: ONLY designation is mandatory! Everything else has sensible defaults/optionals.
   const [formData, setFormData] = useState({
+    designation: '',
     reference: '',
-    product_code: '',
-    barcode: '',
-    brand: 'Michelin',
+    brand: '',
     model_name: '',
-    description: '',
-    dimension: '205/55 R16',
-    width: 205,
-    height: 55,
-    diameter: 'R16',
-    load_index: '91',
-    speed_rating: 'V',
-    tire_type: 'summer' as any,
+    product_type: 'pneu' as 'pneu' | 'accessoire' | 'chambre_air' | 'valve' | 'consommable' | 'divers',
+    dimension: '',
+    width: '' as string | number,
+    height: '' as string | number,
+    diameter: '',
+    load_index: '',
+    speed_rating: '',
+    tire_type: 'all_season' as any,
     condition: 'new' as any,
     vehicle_category: 'passenger' as any,
-    buy_price: 11000,
-    sell_price: 14500,
-    wholesale_price: 13500,
-    stock_quantity: 10,
+    buy_price: '' as string | number,
+    sell_price: '' as string | number,
+    wholesale_price: '' as string | number,
+    stock_quantity: '' as string | number,
     min_stock_alert: 4,
-    location: 'Rayon A-01',
-    dot: '2424'
+    location: '',
+    barcode: '',
+    dot: '',
+    image_path: ''
   })
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = async () => {
     try {
       setLoading(true)
       const list = await window.pneusApi.products.list(filter)
       setProducts(list)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load tires:', err)
+      setNotification({ type: 'error', message: err?.message || 'Erreur lors du chargement des articles' })
     } finally {
       setLoading(false)
     }
@@ -94,28 +108,29 @@ export const Tires: React.FC = () => {
   const handleOpenAdd = () => {
     setEditingId(null)
     setFormData({
-      reference: `PNEU-${Math.floor(100000 + Math.random() * 900000)}`,
-      product_code: '',
-      barcode: '',
-      brand: 'Michelin',
-      model_name: 'Primacy 4',
-      description: '',
-      dimension: '205/55 R16',
-      width: 205,
-      height: 55,
-      diameter: 'R16',
-      load_index: '91',
-      speed_rating: 'V',
-      tire_type: 'summer',
+      designation: '',
+      reference: '',
+      brand: '',
+      model_name: '',
+      product_type: 'pneu',
+      dimension: '',
+      width: '',
+      height: '',
+      diameter: '',
+      load_index: '',
+      speed_rating: '',
+      tire_type: 'all_season',
       condition: 'new',
       vehicle_category: 'passenger',
-      buy_price: 11200,
-      sell_price: 14500,
-      wholesale_price: 13500,
-      stock_quantity: 12,
+      buy_price: '',
+      sell_price: '',
+      wholesale_price: '',
+      stock_quantity: 0,
       min_stock_alert: 4,
-      location: 'Rayon A-01',
-      dot: '2024'
+      location: '',
+      barcode: '',
+      dot: '',
+      image_path: ''
     })
     setIsModalOpen(true)
   }
@@ -123,39 +138,92 @@ export const Tires: React.FC = () => {
   const handleOpenEdit = (p: Product) => {
     setEditingId(p.id)
     setFormData({
+      designation: `${p.brand} ${p.dimension} ${p.model_name || ''}`.trim() || p.reference,
       reference: p.reference,
-      product_code: p.product_code || '',
-      barcode: p.barcode || '',
-      brand: p.brand,
-      model_name: p.model_name,
-      description: p.description || '',
-      dimension: p.dimension,
-      width: p.width,
-      height: p.height,
-      diameter: p.diameter,
-      load_index: p.load_index,
-      speed_rating: p.speed_rating,
-      tire_type: p.tire_type,
-      condition: p.condition,
-      vehicle_category: p.vehicle_category,
+      brand: p.brand || '',
+      model_name: p.model_name || '',
+      product_type: (p.product_type as any) || 'pneu',
+      dimension: p.dimension || '',
+      width: p.width || '',
+      height: p.height || '',
+      diameter: p.diameter || '',
+      load_index: p.load_index || '',
+      speed_rating: p.speed_rating || '',
+      tire_type: p.tire_type || 'all_season',
+      condition: p.condition || 'new',
+      vehicle_category: p.vehicle_category || 'passenger',
       buy_price: p.buy_price,
       sell_price: p.sell_price,
-      wholesale_price: p.wholesale_price,
+      wholesale_price: p.wholesale_price || '',
       stock_quantity: p.stock_quantity,
-      min_stock_alert: p.min_stock_alert,
+      min_stock_alert: p.min_stock_alert || 4,
       location: p.location || '',
-      dot: p.dot || ''
+      barcode: p.barcode || '',
+      dot: p.dot || '',
+      image_path: p.image_path || ''
     })
     setIsModalOpen(true)
   }
 
+  // Handle Photo Upload
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = reader.result as string
+      try {
+        const res = await window.pneusApi.media.uploadImage('products', base64, file.name)
+        if (res && res.path) {
+          setFormData((prev) => ({ ...prev, image_path: res.path }))
+        }
+      } catch (err: any) {
+        alert(`Erreur photo: ${err.message}`)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.designation.trim()) {
+      alert(isAr ? 'يرجى إدخال اسم / تعيين المقال' : "La désignation de l'article est obligatoire.")
+      return
+    }
+
     try {
+      const payload: any = {
+        designation: formData.designation.trim(),
+        reference: formData.reference.trim() || undefined,
+        brand: formData.brand.trim() || 'Générique',
+        model_name: formData.model_name.trim() || undefined,
+        product_type: formData.product_type,
+        dimension: formData.dimension.trim() || undefined,
+        width: formData.width ? Number(formData.width) : undefined,
+        height: formData.height ? Number(formData.height) : undefined,
+        diameter: formData.diameter.trim() || undefined,
+        load_index: formData.load_index.trim() || undefined,
+        speed_rating: formData.speed_rating.trim() || undefined,
+        tire_type: formData.tire_type,
+        condition: formData.condition,
+        vehicle_category: formData.vehicle_category,
+        buy_price: formData.buy_price ? Number(formData.buy_price) : 0,
+        sell_price: formData.sell_price ? Number(formData.sell_price) : 0,
+        wholesale_price: formData.wholesale_price ? Number(formData.wholesale_price) : undefined,
+        stock_quantity: formData.stock_quantity ? Number(formData.stock_quantity) : 0,
+        min_stock_alert: Number(formData.min_stock_alert) || 4,
+        location: formData.location.trim() || undefined,
+        barcode: formData.barcode.trim() || undefined,
+        dot: formData.dot.trim() || undefined,
+        image_path: formData.image_path || undefined
+      }
+
       if (editingId) {
-        await window.pneusApi.products.update(editingId, formData)
+        await window.pneusApi.products.update(editingId, payload)
+        setNotification({ type: 'success', message: 'Article mis à jour avec succès.' })
       } else {
-        await window.pneusApi.products.create(formData)
+        await window.pneusApi.products.create(payload)
+        setNotification({ type: 'success', message: 'Nouvel article ajouté au catalogue.' })
       }
       setIsModalOpen(false)
       loadProducts()
@@ -165,9 +233,10 @@ export const Tires: React.FC = () => {
   }
 
   const handleDelete = async (id: string, ref: string) => {
-    if (confirm(`Confirmer la suppression du pneu ${ref} ?`)) {
+    if (confirm(isAr ? `حذف أو أرشفة المقال ${ref} ؟` : `Confirmer la suppression ou l'archivage de ${ref} ?`)) {
       try {
         await window.pneusApi.products.delete(id)
+        setNotification({ type: 'success', message: 'Article supprimé / archivé.' })
         loadProducts()
       } catch (err: any) {
         alert(`Erreur : ${err.message}`)
@@ -197,448 +266,500 @@ export const Tires: React.FC = () => {
     }
   }
 
+  // Export CSV
+  const handleExportCsv = async () => {
+    const headers = [
+      'Référence',
+      'Marque',
+      'Désignation',
+      'Dimension',
+      'Type',
+      'Prix Achat (DA)',
+      'Prix Vente (DA)',
+      'Stock',
+      'Emplacement'
+    ]
+    const rows = products.map((p) => [
+      p.reference,
+      p.brand,
+      p.model_name || p.dimension,
+      p.dimension,
+      p.product_type || 'pneu',
+      p.buy_price,
+      p.sell_price,
+      p.stock_quantity,
+      p.location || ''
+    ])
+
+    const res = await window.pneusApi.documents.exportCsv(
+      `Catalogue_Pneus_${new Date().toISOString().split('T')[0]}`,
+      headers,
+      rows
+    )
+    if (!res.cancelled && res.path) {
+      setNotification({ type: 'success', message: `Export CSV réussi : ${res.path}` })
+    }
+  }
+
+  // Export PDF
+  const handleExportPdf = async () => {
+    const columns = [
+      { header: 'Référence', dataKey: 'reference' },
+      { header: 'Marque', dataKey: 'brand' },
+      { header: 'Dimension', dataKey: 'dimension' },
+      { header: 'Prix Vente (DA)', dataKey: 'price_formatted' },
+      { header: 'Stock', dataKey: 'stock_quantity' }
+    ]
+
+    const rows = products.map((p) => ({
+      reference: p.reference,
+      brand: p.brand,
+      dimension: p.dimension,
+      price_formatted: formatCurrencyDA(p.sell_price),
+      stock_quantity: p.stock_quantity
+    }))
+
+    const res = await window.pneusApi.documents.exportListPdf(
+      isAr ? 'كتالوج الإطارات والمراجع' : 'Catalogue des Pneus & Références',
+      columns,
+      rows,
+      { isRtl: isAr }
+    )
+    if (!res.cancelled && res.path) {
+      setNotification({ type: 'success', message: `Export PDF réussi : ${res.path}` })
+    }
+  }
+
   return (
-    <div className="space-y-5 select-none animate-fadeIn">
-      {/* Top Header matching screenshot */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="h-full flex flex-col bg-[#F5F6F8] p-4 lg:p-6 select-none overflow-hidden">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-black text-[#111827] tracking-tight">
-            {t('tires.title')}
+          <h1 className="text-xl lg:text-2xl font-black text-[#172235] tracking-tight">
+            {isAr ? 'الإطارات والمراجع والمقالات' : 'Pneus & Références'}
           </h1>
-          <p className="text-xs text-[#667085] mt-0.5">
-            {isAr ? 'كتالوج ومخزون الإطارات الهوائية وأسعار البيع والشراء' : 'Catalogue complet, caractéristiques techniques et stocks disponibles'}
+          <p className="text-xs text-[#667085]">
+            {isAr
+              ? 'كتالوج الإطارات، الصمامات، الغرف الهوائية، ولوازم الورشة'
+              : 'Catalogue complet, caractéristiques techniques, photos et stocks disponibles'}
           </p>
         </div>
 
-        {/* Golden Yellow Action Button */}
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#F5BD18] hover:bg-[#e0ac13] active:bg-[#c99a0e] text-[#111827] text-xs sm:text-sm font-extrabold rounded-xl shadow-xs transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{t('tires.addTire')}</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#E5E7EB] hover:bg-slate-50 text-[#172235] text-xs font-bold rounded-xl shadow-xs transition-all"
+            title="Exporter en fichier Excel / CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden sm:inline">CSV</span>
+          </button>
+          <button
+            onClick={handleExportPdf}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#E5E7EB] hover:bg-slate-50 text-[#172235] text-xs font-bold rounded-xl shadow-xs transition-all"
+            title="Exporter la liste en PDF"
+          >
+            <FileText className="w-3.5 h-3.5 text-red-600" />
+            <span className="hidden sm:inline">PDF</span>
+          </button>
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-[#F5BD18] hover:bg-[#e0ac13] text-[#172235] text-xs font-black rounded-xl shadow-md transition-all active:scale-[0.98]"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{isAr ? '+ إضافة مقال أو إطار' : '+ AJOUTER UN ARTICLE'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Filter Bar matching screenshot */}
-      <div className="bg-white p-4 rounded-2xl border border-[#E5E7EB] shadow-xs flex flex-wrap items-center gap-3">
-        {/* Search Input */}
+      {/* Notifications */}
+      {notification && (
+        <div
+          className={`mb-4 p-3.5 rounded-xl border flex items-center justify-between text-xs font-semibold shadow-xs animate-fadeIn ${
+            notification.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+              : 'bg-red-50 border-red-300 text-red-800'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{notification.message}</span>
+          </div>
+          <button onClick={() => setNotification(null)} className="p-1 hover:opacity-75">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Filter Toolbar matching screenshot */}
+      <div className="bg-white p-3 rounded-xl border border-[#E5E7EB] shadow-xs flex flex-wrap items-center gap-2.5 mb-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 left-3 text-[#667085]" />
+          <Search className={`w-4 h-4 absolute top-1/2 -translate-y-1/2 text-[#667085] ${isAr ? 'right-3' : 'left-3'}`} />
           <input
             type="text"
-            placeholder={isAr ? 'بحث بالمرجع أو العلامة أو المقاس...' : 'Rechercher par réf, marque...'}
+            placeholder={isAr ? 'بحث بالمرجع أو العلامة أو المقاس...' : 'Rechercher par réf, marque, dimension...'}
             value={filter.search}
             onChange={(e) => setFilter({ ...filter, search: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && handleApplyFilter()}
-            className="w-full h-9 pl-9 pr-3 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs text-[#111827] focus:ring-2 focus:ring-[#F5BD18] outline-none"
+            className={`w-full h-9 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs text-[#172235] focus:outline-none focus:ring-1 focus:ring-[#F5BD18] ${
+              isAr ? 'pr-9 pl-3 text-right' : 'pl-9 pr-3 text-left'
+            }`}
           />
         </div>
 
-        {/* Marque Dropdown */}
         <select
           value={filter.brand}
           onChange={(e) => setFilter({ ...filter, brand: e.target.value })}
-          className="h-9 px-3 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs font-semibold text-[#111827] focus:ring-2 focus:ring-[#F5BD18] outline-none cursor-pointer"
+          className="h-9 px-2.5 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs font-semibold text-[#172235] focus:ring-1 focus:ring-[#F5BD18] outline-none cursor-pointer"
         >
-          <option value="all">{isAr ? 'العلامة التجارية: الكل' : 'Marque: Toutes'}</option>
+          <option value="all">Marque: Toutes</option>
           <option value="Michelin">Michelin</option>
           <option value="Continental">Continental</option>
           <option value="Pirelli">Pirelli</option>
           <option value="Goodyear">Goodyear</option>
           <option value="Bridgestone">Bridgestone</option>
           <option value="Hankook">Hankook</option>
-          <option value="Dunlop">Dunlop</option>
+          <option value="Générique">Générique</option>
         </select>
 
-        {/* Dimension Dropdown */}
         <select
-          value={filter.dimension}
-          onChange={(e) => setFilter({ ...filter, dimension: e.target.value })}
-          className="h-9 px-3 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs font-semibold text-[#111827] focus:ring-2 focus:ring-[#F5BD18] outline-none cursor-pointer"
-        >
-          <option value="all">{isAr ? 'المقاس: الكل' : 'Dimension: Toutes'}</option>
-          <option value="205/55 R16">205/55 R16</option>
-          <option value="195/65 R15">195/65 R15</option>
-          <option value="185/65 R15">185/65 R15</option>
-          <option value="225/45 R17">225/45 R17</option>
-          <option value="175/70 R14">175/70 R14</option>
-          <option value="225/55 R18">225/55 R18</option>
-        </select>
-
-        {/* Type / Saison Dropdown */}
-        <select
-          value={filter.tire_type}
-          onChange={(e) => setFilter({ ...filter, tire_type: e.target.value })}
-          className="h-9 px-3 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs font-semibold text-[#111827] focus:ring-2 focus:ring-[#F5BD18] outline-none cursor-pointer"
-        >
-          <option value="all">{isAr ? 'النوع: الكل' : 'Type: Tous'}</option>
-          <option value="summer">{t('tires.summer')}</option>
-          <option value="winter">{t('tires.winter')}</option>
-          <option value="all_season">{t('tires.allSeason')}</option>
-        </select>
-
-        {/* Stock Status Dropdown */}
-        <select
-          value={filter.stock_status}
+          value={filter.stock_status || 'all'}
           onChange={(e) => setFilter({ ...filter, stock_status: e.target.value as any })}
-          className="h-9 px-3 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs font-semibold text-[#111827] focus:ring-2 focus:ring-[#F5BD18] outline-none cursor-pointer"
+          className="h-9 px-2.5 bg-[#F5F6F8] border border-[#E5E7EB] rounded-lg text-xs font-semibold text-[#172235] focus:ring-1 focus:ring-[#F5BD18] outline-none cursor-pointer"
         >
-          <option value="all">{isAr ? 'المخزون: الكل' : 'Stock: Tous'}</option>
-          <option value="in_stock">{isAr ? 'متوفر' : 'En stock'}</option>
-          <option value="low_stock">{isAr ? 'مخزون منخفض' : 'Stock bas'}</option>
-          <option value="out_of_stock">{isAr ? 'نفذ المخزون' : 'Rupture'}</option>
+          <option value="all">Stock: Tous</option>
+          <option value="in_stock">En stock (&gt;0)</option>
+          <option value="low_stock">Stock faible (alerte)</option>
+          <option value="out_of_stock">Rupture (0)</option>
         </select>
 
-        {/* Action Buttons */}
         <button
           onClick={handleApplyFilter}
-          className="flex items-center gap-1.5 h-9 px-3.5 bg-[#172235] hover:bg-[#111827] text-white text-xs font-bold rounded-lg transition-all"
+          className="h-9 px-3.5 bg-[#172235] hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
         >
-          <Filter className="w-3.5 h-3.5" />
-          <span>{t('common.filter')}</span>
+          Filtrer
         </button>
-
         <button
           onClick={handleResetFilter}
-          className="flex items-center gap-1.5 h-9 px-3 border border-[#E5E7EB] hover:bg-[#F5F6F8] text-[#667085] hover:text-[#111827] text-xs font-semibold rounded-lg transition-all"
+          className="h-9 px-3 bg-slate-100 hover:bg-slate-200 text-[#172235] rounded-lg text-xs font-semibold transition-all"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>{t('common.reset')}</span>
+          Réinitialiser
         </button>
       </div>
 
-      {/* Main Tires Table matching screenshot */}
-      <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+      {/* Main Tires Table */}
+      <div className="flex-1 bg-white rounded-xl border border-[#E5E7EB] overflow-hidden flex flex-col shadow-xs">
+        <div className="flex-1 overflow-y-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-[#F5F6F8] border-b border-[#E5E7EB] text-[#111827] uppercase text-[11px] font-bold">
-                <th className="py-3 px-4">{t('tires.reference')}</th>
-                <th className="py-3 px-4">{t('tires.brand')}</th>
-                <th className="py-3 px-4">{t('tires.dimension')}</th>
-                <th className="py-3 px-4 text-center">{t('tires.width')}</th>
-                <th className="py-3 px-4 text-center">{t('tires.height')}</th>
-                <th className="py-3 px-4 text-center">{t('tires.diameter')}</th>
-                <th className="py-3 px-4 text-center">{t('tires.loadSpeed')}</th>
-                <th className="py-3 px-4 text-center">{t('tires.type')}</th>
-                <th className="py-3 px-4 text-right">{t('tires.buyPrice')}</th>
-                <th className="py-3 px-4 text-right">{t('tires.sellPrice')}</th>
-                <th className="py-3 px-4 text-center">{t('tires.stock')}</th>
-                <th className="py-3 px-4 text-center">{t('common.actions')}</th>
+            <thead className="bg-[#172235] text-white sticky top-0 uppercase text-[10px] tracking-wider font-bold z-10">
+              <tr>
+                <th className="py-2.5 px-3">Référence</th>
+                <th className="py-2.5 px-3">Marque</th>
+                <th className="py-2.5 px-3">Dimension / Type</th>
+                <th className="py-2.5 px-2 text-center">Indice</th>
+                <th className="py-2.5 px-2 text-center">Saison</th>
+                <th className="py-2.5 px-3 text-right">Prix Achat (DA)</th>
+                <th className="py-2.5 px-3 text-right">Prix Vente (DA)</th>
+                <th className="py-2.5 px-3 text-center">Stock</th>
+                <th className="py-2.5 px-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E7EB]">
-              {products.map((p) => {
-                const stockBg =
-                  p.stock_quantity > p.min_stock_alert
-                    ? 'bg-emerald-600 text-white'
-                    : p.stock_quantity > 0
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-red-600 text-white'
-
-                return (
-                  <tr key={p.id} className="hover:bg-[#F9FAFB] transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-[#111827]">
-                      {p.reference}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#172235]">{p.brand}</span>
-                        <span className="text-[10px] text-[#667085]">({p.model_name})</span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-[#111827]">
-                      {p.dimension}
-                    </td>
-                    <td className="py-3.5 px-4 text-center text-[#667085]">{p.width}</td>
-                    <td className="py-3.5 px-4 text-center text-[#667085]">{p.height}</td>
-                    <td className="py-3.5 px-4 text-center font-semibold text-[#111827]">{p.diameter}</td>
-                    <td className="py-3.5 px-4 text-center font-bold text-[#111827]">
-                      {p.load_index}{p.speed_rating}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[#111827] text-[11px] font-semibold">
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center text-[#667085]">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-[#F5BD18] border-t-transparent rounded-full animate-spin" />
+                      <span>Chargement du catalogue...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : products.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center text-[#667085]">
+                    Aucun article trouvé. Cliquez sur "+ Ajouter un article" pour enregistrer votre premier produit.
+                  </td>
+                </tr>
+              ) : (
+                products.map((p) => {
+                  const isOut = p.stock_quantity <= 0
+                  const isLow = p.stock_quantity <= p.min_stock_alert && !isOut
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2.5 px-3 font-mono font-bold text-[#172235]">
+                        {p.reference}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="font-extrabold text-[#172235]">{p.brand}</span>
+                        {p.model_name && <span className="text-[10px] text-[#667085] ml-1">({p.model_name})</span>}
+                      </td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-700">
+                        {p.dimension || p.product_type?.toUpperCase() || '-'}
+                      </td>
+                      <td className="py-2.5 px-2 text-center font-mono text-slate-600">
+                        {p.load_index || p.speed_rating ? `${p.load_index || ''}${p.speed_rating || ''}` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2 text-center text-slate-600">
                         {p.tire_type === 'summer'
-                          ? t('tires.summer')
+                          ? 'Été'
                           : p.tire_type === 'winter'
-                          ? t('tires.winter')
-                          : t('tires.allSeason')}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-medium text-[#667085]">
-                      {formatCurrencyDA(p.buy_price, i18n.language)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-extrabold text-[#111827]">
-                      {formatCurrencyDA(p.sell_price, i18n.language)}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-md text-xs font-black ${stockBg}`}>
-                        {p.stock_quantity}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => handlePrintLabel(p)}
-                          className="p-1.5 hover:bg-[#E5E7EB] text-[#667085] hover:text-[#111827] rounded-lg transition-colors"
-                          title="Imprimer Étiquette"
+                          ? 'Hiver'
+                          : p.tire_type === 'all_season'
+                          ? '4 Saisons'
+                          : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-600">
+                        {formatCurrencyDA(p.buy_price)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-black text-[#172235]">
+                        {formatCurrencyDA(p.sell_price)}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black ${
+                            isOut
+                              ? 'bg-red-100 text-red-800'
+                              : isLow
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
                         >
-                          <Tag className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(p)}
-                          className="p-1.5 hover:bg-[#E5E7EB] text-[#667085] hover:text-[#111827] rounded-lg transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(p.id, p.reference)}
-                          className="p-1.5 hover:bg-red-50 text-[#667085] hover:text-red-600 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
+                          {p.stock_quantity}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(p)}
+                            className="p-1 hover:bg-slate-100 rounded text-amber-600"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePrintLabel(p)}
+                            className="p-1 hover:bg-slate-100 rounded text-blue-600"
+                            title="Imprimer étiquette code-barres"
+                          >
+                            <Tag className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(p.id, p.reference)}
+                            className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"
+                            title="Supprimer / Archiver"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
-
-        {/* Footer / Pagination matching screenshot */}
-        <div className="p-4 border-t border-[#E5E7EB] bg-[#F5F6F8] flex items-center justify-between text-xs text-[#667085]">
-          <div>
-            Affiche 1 à {products.length} de {products.length} pneus
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="px-2.5 py-1 rounded bg-[#F5BD18] text-[#111827] font-bold">1</span>
-          </div>
-        </div>
       </div>
 
-      {/* Modal Add / Edit Tire */}
+      {/* MODAL: Add / Edit Product (SIMPLIFIED & INTUITIVE) */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 select-none">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-[#E5E7EB] overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 select-none animate-fadeIn">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
             <div className="bg-[#172235] px-6 py-4 flex items-center justify-between text-white border-b border-[#111827]">
               <div className="flex items-center gap-2">
                 <Disc className="w-5 h-5 text-[#F5BD18]" />
-                <h3 className="font-bold text-sm">
-                  {editingId ? 'Modifier la Référence de Pneu' : 'Ajouter un Nouveau Pneu au Catalogue'}
+                <h3 className="font-bold text-base">
+                  {editingId ? "Modifier l'Article" : 'Ajouter un Nouvel Article'}
                 </h3>
               </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-md"
-              >
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="p-6 overflow-y-auto space-y-4 text-xs">
-              <div className="grid grid-cols-3 gap-3">
+              {/* PRIMARY MANDATORY FIELD */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-300 rounded-xl space-y-1">
+                <label className="block text-xs font-black text-[#172235]">
+                  Désignation de l'article * (SEUL CHAMP STRICTEMENT OBLIGATOIRE)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Michelin Primacy 4 205/55 R16 91V, Valve TR414, Chambre à air 15..."
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                  className="w-full bg-white border border-amber-400 rounded-lg px-3 py-2 text-sm font-bold text-[#172235] focus:outline-none focus:ring-2 focus:ring-[#F5BD18]"
+                />
+              </div>
+
+              {/* Product Type & Reference */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-[#111827] mb-1">Référence Interne</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Type d'article (Optionnel)
+                  </label>
+                  <select
+                    value={formData.product_type}
+                    onChange={(e) => setFormData({ ...formData, product_type: e.target.value as any })}
+                    className="w-full bg-[#F5F6F8] border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold text-[#172235]"
+                  >
+                    <option value="pneu">Pneu (Tourisme, 4x4, Utilitaire)</option>
+                    <option value="accessoire">Accessoire</option>
+                    <option value="chambre_air">Chambre à air</option>
+                    <option value="valve">Valve pneumatique</option>
+                    <option value="consommable">Consommable d'atelier</option>
+                    <option value="divers">Article divers</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Référence (Optionnel — générée si vide)
+                  </label>
                   <input
                     type="text"
+                    placeholder="Laisser vide pour auto-génération"
                     value={formData.reference}
-                    onChange={(e) => setFormData({ ...formData, reference: e.target.value.toUpperCase() })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg font-mono font-bold uppercase"
+                    onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
+                    className="w-full bg-[#F5F6F8] border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-[#172235]"
                   />
                 </div>
+              </div>
+
+              {/* Brand & Dimension */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-[#111827] mb-1">Marque</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Marque (Optionnel — défaut: Générique)
+                  </label>
                   <input
                     type="text"
+                    placeholder="Michelin, Continental, Pirelli, etc."
                     value={formData.brand}
                     onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg"
+                    className="w-full bg-[#F5F6F8] border border-slate-300 rounded-lg px-2.5 py-1.5 text-[#172235]"
                   />
                 </div>
-                <div>
-                  <label className="block font-bold text-[#111827] mb-1">Modèle / Gamme</label>
-                  <input
-                    type="text"
-                    value={formData.model_name}
-                    onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-4 gap-3 bg-[#F5F6F8] p-3 rounded-xl border border-[#E5E7EB]">
                 <div>
-                  <label className="block font-bold text-[#111827] mb-1">Dimension (Texte)</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Dimension (Optionnel)
+                  </label>
                   <input
                     type="text"
+                    placeholder="Ex: 205/55 R16, 195/65 R15..."
                     value={formData.dimension}
                     onChange={(e) => setFormData({ ...formData, dimension: e.target.value })}
-                    required
-                    className="w-full h-9 px-2.5 bg-white border border-[#E5E7EB] rounded-lg font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Largeur (mm)</label>
-                  <input
-                    type="number"
-                    value={formData.width}
-                    onChange={(e) => setFormData({ ...formData, width: parseInt(e.target.value) || 0 })}
-                    required
-                    className="w-full h-9 px-2.5 bg-white border border-[#E5E7EB] rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Hauteur (%)</label>
-                  <input
-                    type="number"
-                    value={formData.height}
-                    onChange={(e) => setFormData({ ...formData, height: parseInt(e.target.value) || 0 })}
-                    required
-                    className="w-full h-9 px-2.5 bg-white border border-[#E5E7EB] rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Diamètre (R..)</label>
-                  <input
-                    type="text"
-                    value={formData.diameter}
-                    onChange={(e) => setFormData({ ...formData, diameter: e.target.value.toUpperCase() })}
-                    required
-                    className="w-full h-9 px-2.5 bg-white border border-[#E5E7EB] rounded-lg uppercase"
+                    className="w-full bg-[#F5F6F8] border border-slate-300 rounded-lg px-2.5 py-1.5 text-[#172235]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              {/* Pricing & Stock */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Indice de Charge</label>
-                  <input
-                    type="text"
-                    value={formData.load_index}
-                    onChange={(e) => setFormData({ ...formData, load_index: e.target.value })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Indice de Vitesse</label>
-                  <input
-                    type="text"
-                    value={formData.speed_rating}
-                    onChange={(e) => setFormData({ ...formData, speed_rating: e.target.value.toUpperCase() })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Saison / Type</label>
-                  <select
-                    value={formData.tire_type}
-                    onChange={(e) => setFormData({ ...formData, tire_type: e.target.value as any })}
-                    className="w-full h-9 px-2 border border-[#E5E7EB] rounded-lg bg-white"
-                  >
-                    <option value="summer">Été</option>
-                    <option value="winter">Hiver</option>
-                    <option value="all_season">4 Saisons</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">État</label>
-                  <select
-                    value={formData.condition}
-                    onChange={(e) => setFormData({ ...formData, condition: e.target.value as any })}
-                    className="w-full h-9 px-2 border border-[#E5E7EB] rounded-lg bg-white"
-                  >
-                    <option value="new">Neuf</option>
-                    <option value="used">Occasion</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-bold text-[#111827] mb-1">Prix d'Achat (DA)</label>
+                  <label className="block font-bold text-slate-700 mb-1">Prix d'Achat (DA)</label>
                   <input
                     type="number"
+                    min="0"
+                    placeholder="0"
                     value={formData.buy_price}
-                    onChange={(e) => setFormData({ ...formData, buy_price: parseFloat(e.target.value) || 0 })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg font-bold"
+                    onChange={(e) => setFormData({ ...formData, buy_price: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-bold text-[#172235]"
                   />
                 </div>
+
                 <div>
-                  <label className="block font-bold text-[#111827] mb-1">Prix de Vente (DA)</label>
+                  <label className="block font-bold text-slate-700 mb-1">Prix de Vente (DA)</label>
                   <input
                     type="number"
+                    min="0"
+                    placeholder="0"
                     value={formData.sell_price}
-                    onChange={(e) => setFormData({ ...formData, sell_price: parseFloat(e.target.value) || 0 })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg font-bold text-emerald-600"
+                    onChange={(e) => setFormData({ ...formData, sell_price: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-black text-[#172235]"
                   />
                 </div>
+
                 <div>
-                  <label className="block font-bold text-[#111827] mb-1">Stock Disponible</label>
+                  <label className="block font-bold text-slate-700 mb-1">Stock Initial</label>
                   <input
                     type="number"
+                    placeholder="0"
                     value={formData.stock_quantity}
-                    onChange={(e) => setFormData({ ...formData, stock_quantity: parseInt(e.target.value) || 0 })}
-                    required
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg font-bold"
+                    onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-bold text-[#172235]"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Seuil Alerte Stock Bas</label>
+                  <label className="block font-bold text-slate-700 mb-1">Alerte Min.</label>
                   <input
                     type="number"
+                    min="0"
                     value={formData.min_stock_alert}
-                    onChange={(e) => setFormData({ ...formData, min_stock_alert: parseInt(e.target.value) || 0 })}
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Emplacement Rayon</label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#667085] mb-1">Code DOT (Semaine/Année)</label>
-                  <input
-                    type="text"
-                    value={formData.dot}
-                    onChange={(e) => setFormData({ ...formData, dot: e.target.value })}
-                    placeholder="ex: 1824"
-                    className="w-full h-9 px-2.5 border border-[#E5E7EB] rounded-lg"
+                    onChange={(e) => setFormData({ ...formData, min_stock_alert: parseInt(e.target.value, 10) || 4 })}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-bold text-slate-700"
                   />
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-[#E5E7EB] flex justify-end gap-2.5">
+              {/* Photo & Barcode (Both Optional) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Photo du produit (Optionnel)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-[#F5BD18]" />
+                      <span>{formData.image_path ? 'Changer image' : 'Importer photo'}</span>
+                    </button>
+                    {formData.image_path && (
+                      <span className="text-emerald-600 font-bold text-[11px]">Photo enregistrée</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Code-barres / EAN (Optionnel)</label>
+                  <input
+                    type="text"
+                    placeholder="Scannez ou saisissez..."
+                    value={formData.barcode}
+                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                    className="w-full bg-[#F5F6F8] border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-[#172235]"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-[#E5E7EB] rounded-lg text-[#667085] hover:bg-[#F5F6F8] font-semibold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#F5BD18] hover:bg-[#e0ac13] text-[#111827] font-bold rounded-lg shadow-xs"
+                  className="px-6 py-2 bg-[#F5BD18] hover:bg-[#e0ac13] text-[#172235] font-black rounded-xl shadow-md transition-all"
                 >
-                  {editingId ? 'Enregistrer les modifications' : 'Ajouter le pneu'}
+                  {editingId ? "Enregistrer l'Article" : 'Ajouter au Catalogue'}
                 </button>
               </div>
             </form>

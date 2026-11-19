@@ -19,7 +19,7 @@ export class DashboardRepository {
       .prepare(`
         SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0) as turnover
         FROM sales
-        WHERE status != 'cancelled' AND ${dateCondition}
+        WHERE status != 'cancelled' AND (is_archived = 0 OR is_archived IS NULL) AND ${dateCondition}
       `)
       .get() as { count: number; turnover: number }
 
@@ -30,7 +30,7 @@ export class DashboardRepository {
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         LEFT JOIN products p ON si.product_id = p.id
-        WHERE s.status != 'cancelled' AND si.item_type = 'product' AND ${dateCondition.replace(/date/g, 's.date')}
+        WHERE s.status != 'cancelled' AND (s.is_archived = 0 OR s.is_archived IS NULL) AND si.item_type = 'product' AND ${dateCondition.replace(/date/g, 's.date')}
       `)
       .get() as { cost_of_goods: number }
 
@@ -59,11 +59,12 @@ export class DashboardRepository {
           COUNT(CASE WHEN stock_quantity <= min_stock_alert AND stock_quantity > 0 THEN 1 END) as low_count,
           COUNT(CASE WHEN stock_quantity <= 0 THEN 1 END) as out_count
         FROM products
+        WHERE is_archived = 0 OR is_archived IS NULL
       `)
       .get() as { total_count: number; stock_value: number; low_count: number; out_count: number }
 
     // 5. Total clients
-    const customersAgg = this.db.prepare('SELECT COUNT(*) as count FROM customers').get() as { count: number }
+    const customersAgg = this.db.prepare('SELECT COUNT(*) as count FROM customers WHERE is_archived = 0 OR is_archived IS NULL').get() as { count: number }
 
     // 6. Total rendez-vous prévus
     const apptsAgg = this.db
@@ -72,12 +73,12 @@ export class DashboardRepository {
 
     // 7. Dernières ventes
     const recentSales = this.db
-      .prepare('SELECT * FROM sales ORDER BY date DESC, created_at DESC LIMIT 6')
+      .prepare('SELECT * FROM sales WHERE is_archived = 0 OR is_archived IS NULL ORDER BY date DESC, created_at DESC LIMIT 6')
       .all() as Sale[]
 
     // 8. Alertes stock bas
     const lowStockAlerts = this.db
-      .prepare('SELECT * FROM products WHERE stock_quantity <= min_stock_alert ORDER BY stock_quantity ASC LIMIT 6')
+      .prepare('SELECT * FROM products WHERE stock_quantity <= min_stock_alert AND (is_archived = 0 OR is_archived IS NULL) ORDER BY stock_quantity ASC LIMIT 6')
       .all() as Product[]
 
     // 9. Top pneus vendus
@@ -87,7 +88,7 @@ export class DashboardRepository {
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         JOIN products p ON si.product_id = p.id
-        WHERE s.status != 'cancelled'
+        WHERE s.status != 'cancelled' AND (s.is_archived = 0 OR s.is_archived IS NULL)
         GROUP BY p.id
         ORDER BY quantity DESC
         LIMIT 5

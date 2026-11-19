@@ -6,6 +6,8 @@ import { runMigrations } from './database/migrate'
 import { LicenseService } from './license/service'
 import { setLicenseService } from './license/guard'
 import { registerIpcHandlers } from './ipc/register'
+import { SettingsRepository } from './database/repositories/settings'
+import { checkForAppUpdates } from './services/appUpdater'
 import type { Cipher } from './license/installationId'
 
 let mainWindow: BrowserWindow | null = null
@@ -29,7 +31,7 @@ function createCipher(): Cipher {
   }
 }
 
-async function createWindow(): Promise<BrowserWindow> {
+async function createWindow(initialZoomFactor = 1.0, onZoomChange?: (factor: number) => void): Promise<BrowserWindow> {
   const iconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'icon.ico')
     : path.join(__dirname, '../../resources/icon.ico')
@@ -52,7 +54,32 @@ async function createWindow(): Promise<BrowserWindow> {
   })
 
   win.on('ready-to-show', () => {
+    win.webContents.setZoomFactor(initialZoomFactor)
     win.show()
+  })
+
+  // Keyboard zoom controls: Ctrl + +, Ctrl + -, Ctrl + 0, Ctrl + =
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.control && !input.alt && !input.shift) {
+      const key = input.key.toLowerCase()
+      if (key === '+' || key === '=' || key === 'add') {
+        event.preventDefault()
+        const current = win.webContents.getZoomFactor()
+        const next = Math.min(1.5, Math.round((current + 0.1) * 10) / 10)
+        win.webContents.setZoomFactor(next)
+        onZoomChange?.(next)
+      } else if (key === '-' || key === 'subtract') {
+        event.preventDefault()
+        const current = win.webContents.getZoomFactor()
+        const next = Math.max(0.8, Math.round((current - 0.1) * 10) / 10)
+        win.webContents.setZoomFactor(next)
+        onZoomChange?.(next)
+      } else if (key === '0' || key === 'num0') {
+        event.preventDefault()
+        win.webContents.setZoomFactor(1.0)
+        onZoomChange?.(1.0)
+      }
+    }
   })
 
   win.webContents.setWindowOpenHandler((details) => {
@@ -89,11 +116,32 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers(db, dbPath, userDataDir)
 
-  mainWindow = await createWindow()
+  const settingsRepo = new SettingsRepository(db)
+  const savedZoom = settingsRepo.getZoomFactor()
+
+  mainWindow = await createWindow(savedZoom, (factor) => {
+    settingsRepo.setZoomFactor(factor)
+  })
+
+  // Automatic update check after 3 seconds on startup, then every 3 hours
+  setTimeout(() => {
+    checkForAppUpdates().catch((err) => {
+      logger.warn('Initial update check failed', { error: err?.message || String(err) })
+    })
+  }, 3000)
+
+  const THREE_HOURS_MS = 3 * 60 * 60 * 1000
+  setInterval(() => {
+    checkForAppUpdates().catch((err) => {
+      logger.warn('Periodic update check failed', { error: err?.message || String(err) })
+    })
+  }, THREE_HOURS_MS)
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = await createWindow()
+      mainWindow = await createWindow(settingsRepo.getZoomFactor(), (factor) => {
+        settingsRepo.setZoomFactor(factor)
+      })
     }
   })
 })

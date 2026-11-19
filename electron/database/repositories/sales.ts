@@ -3,6 +3,9 @@ import type Database from 'better-sqlite3'
 import type { PaymentMethod, Sale, SaleItem, SalePayment } from '@shared/types'
 
 export class SalesRepository {
+  private lastSaleTimestamp = 0
+  private lastSaleFingerprint = ''
+
   constructor(private db: Database.Database) {}
 
   private nextInvoiceNumber(): string {
@@ -18,7 +21,7 @@ export class SalesRepository {
   }
 
   list(filter?: { startDate?: string; endDate?: string; customerId?: string; status?: string }): Sale[] {
-    let sql = 'SELECT * FROM sales WHERE 1=1'
+    let sql = 'SELECT * FROM sales WHERE (is_archived = 0 OR is_archived IS NULL)'
     const params: any[] = []
 
     if (filter?.startDate) {
@@ -39,19 +42,28 @@ export class SalesRepository {
     }
 
     sql += ' ORDER BY date DESC, created_at DESC'
-    return this.db.prepare(sql).all(...params) as Sale[]
+    const rows = this.db.prepare(sql).all(...params) as any[]
+    return rows.map((r) => ({
+      ...r,
+      is_archived: Boolean(r.is_archived)
+    }))
   }
 
   getById(id: string): Sale | null {
-    const sale = this.db.prepare('SELECT * FROM sales WHERE id = ?').get(id) as Sale | undefined
+    const sale = this.db.prepare('SELECT * FROM sales WHERE id = ?').get(id) as any
     if (!sale) return null
     const items = this.db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(id) as SaleItem[]
     const payments = this.db.prepare('SELECT * FROM sale_payments WHERE sale_id = ? ORDER BY date ASC').all(id) as SalePayment[]
-    return { ...sale, items, payments }
+    return {
+      ...sale,
+      is_archived: Boolean(sale.is_archived),
+      items,
+      payments
+    }
   }
 
   getByInvoiceNumber(invNum: string): Sale | null {
-    const sale = this.db.prepare('SELECT * FROM sales WHERE invoice_number = ?').get(invNum) as Sale | undefined
+    const sale = this.db.prepare('SELECT * FROM sales WHERE invoice_number = ?').get(invNum) as any
     if (!sale) return null
     return this.getById(sale.id)
   }
@@ -81,10 +93,25 @@ export class SalesRepository {
       tax_rate?: number
     }[]
   }): Sale {
-    const profile = this.db.prepare('SELECT allow_negative_stock FROM store_profile WHERE id = 1').get() as {
+    // 0. Double-click idempotency guard (prevent creating 2 sales within 2 seconds with same payload)
+    const nowMs = Date.now()
+    const fingerprint = `${data.customer_name}_${data.customer_phone}_${data.items.length}_${data.items.map(i => `${i.reference}:${i.quantity}`).join(';')}`
+    if (nowMs - this.lastSaleTimestamp < 2000 && this.lastSaleFingerprint === fingerprint) {
+      const recentSale = this.db.prepare('SELECT id FROM sales ORDER BY created_at DESC LIMIT 1').get() as { id: string }
+      if (recentSale) {
+        return this.getById(recentSale.id)!
+      }
+    }
+    this.lastSaleTimestamp = nowMs
+    this.lastSaleFingerprint = fingerprint
+
+    const profile = this.db.prepare('SELECT allow_negative_stock, is_tva_enabled, default_tax_rate FROM store_profile WHERE id = 1').get() as {
       allow_negative_stock: number
+      is_tva_enabled: number
+      default_tax_rate: number
     } | undefined
     const allowNegative = profile ? Boolean(profile.allow_negative_stock) : false
+    const isTvaEnabled = profile?.is_tva_enabled === undefined ? true : Boolean(profile.is_tva_enabled)
 
     // 1. Check stock availability for products
     if (!allowNegative) {
@@ -108,11 +135,11 @@ export class SalesRepository {
     // 2. Calculations
     let subtotal = 0
     let totalTax = 0
-    const taxRate = data.tax_rate ?? 19.0
+    const taxRate = isTvaEnabled ? (data.tax_rate ?? profile?.default_tax_rate ?? 19.0) : 0
     const discount = data.discount_amount ?? 0
 
     for (const item of data.items) {
-      const lineTaxRate = item.tax_rate ?? taxRate
+      const lineTaxRate = isTvaEnabled ? (item.tax_rate ?? taxRate) : 0
       const lineTotal = item.quantity * item.unit_price
       subtotal += lineTotal
       totalTax += lineTotal * (lineTaxRate / 100)
@@ -136,8 +163,8 @@ export class SalesRepository {
             id, invoice_number, customer_id, customer_name, customer_phone,
             vehicle_id, vehicle_info, license_plate, mileage, date,
             sale_type, subtotal, tax_rate, tax_amount, discount_amount,
-            total_amount, paid_amount, balance_due, payment_method, status, notes, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_amount, paid_amount, balance_due, payment_method, status, notes, is_archived, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
         `)
         .run(
           id,
@@ -185,7 +212,7 @@ export class SalesRepository {
       `)
 
       for (const item of data.items) {
-        const lineTaxRate = item.tax_rate ?? taxRate
+        const lineTaxRate = isTvaEnabled ? (item.tax_rate ?? taxRate) : 0
         const totalLine = item.quantity * item.unit_price * (1 + lineTaxRate / 100)
         insertItem.run(
           randomUUID(),
@@ -336,10 +363,10 @@ export class SalesRepository {
     const today = now.split('T')[0]
 
     const tx = this.db.transaction(() => {
-      // 1. Mark sale as cancelled
+      // 1. Mark sale as cancelled with timestamp and reason
       this.db
-        .prepare("UPDATE sales SET status = 'cancelled', notes = notes || ? WHERE id = ?")
-        .run(` [ANNULÉE: ${reason || 'Annulation par utilisateur'}]`, id)
+        .prepare("UPDATE sales SET status = 'cancelled', cancelled_at = ?, cancel_reason = ?, notes = notes || ? WHERE id = ?")
+        .run(now, reason || 'Annulation par utilisateur', ` [ANNULÉE: ${reason || 'Annulation'}]`, id)
 
       // 2. Return products to stock and add reverse movements
       const incrementStock = this.db.prepare(`
@@ -384,5 +411,10 @@ export class SalesRepository {
 
     tx()
     return true
+  }
+
+  archive(id: string): boolean {
+    const res = this.db.prepare('UPDATE sales SET is_archived = 1 WHERE id = ?').run(id)
+    return res.changes > 0
   }
 }

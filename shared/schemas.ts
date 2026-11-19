@@ -16,6 +16,8 @@ export const storeProfileSchema = z.object({
   nis_number: z.string().optional(),
   ai_number: z.string().optional(),
   default_tax_rate: z.number().min(0).max(100).default(19),
+  is_tva_enabled: z.boolean().default(true),
+  zoom_factor: z.number().default(1.0),
   default_printer: z.string().optional(),
   default_label_printer: z.string().optional(),
   ticket_format: z.enum(['58mm', '80mm']).default('80mm'),
@@ -26,24 +28,35 @@ export const storeProfileSchema = z.object({
   allow_negative_stock: z.boolean().default(false)
 })
 
+export const taxRateSchema = z.object({
+  rate: z.number().min(0).max(100),
+  label: z.string().optional(),
+  name: z.string().optional(),
+  is_default: z.boolean().default(false),
+  is_active: z.boolean().default(true)
+})
+
 export const createProductSchema = z.object({
-  reference: z.string().min(1),
+  reference: z.string().optional().default(''),
   product_code: z.string().optional(),
   barcode: z.string().optional(),
-  brand: z.string().min(1),
-  model_name: z.string().min(1),
-  description: z.string().optional(),
-  dimension: z.string().min(1),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  diameter: z.string().min(1),
-  load_index: z.string().min(1),
-  speed_rating: z.string().min(1),
+  brand: z.string().optional().default('Générique'),
+  model_name: z.string().optional().default(''),
+  designation: z.string().optional(),
+  description: z.string().optional().default(''),
+  dimension: z.string().optional().default(''),
+  width: z.number().optional().default(0),
+  height: z.number().optional().default(0),
+  diameter: z.string().optional().default(''),
+  load_index: z.string().optional().default(''),
+  speed_rating: z.string().optional().default(''),
   tire_type: z.enum(['summer', 'winter', 'all_season']).default('summer'),
   condition: z.enum(['new', 'used']).default('new'),
   vehicle_category: z.enum(['passenger', '4x4_suv', 'commercial', 'truck', 'moto']).default('passenger'),
-  buy_price: z.number().min(0),
-  sell_price: z.number().min(0),
+  product_type: z.enum(['pneu', 'accessoire', 'chambre_a_air', 'valve', 'consommable', 'divers']).default('pneu'),
+  image_path: z.string().optional(),
+  buy_price: z.number().min(0).default(0),
+  sell_price: z.number().min(0).default(0),
   wholesale_price: z.number().min(0).default(0),
   stock_quantity: z.number().int().default(0),
   min_stock_alert: z.number().int().default(4),
@@ -86,27 +99,40 @@ export const supplierSchema = z.object({
   email: z.string().email().optional().or(z.literal(''))
 })
 
+export const supplierPaymentSchema = z.object({
+  supplier_id: z.string().min(1),
+  purchase_id: z.string().optional().nullable(),
+  amount: z.number().positive(),
+  payment_type: z.enum(['acompte', 'paiement']).default('paiement'),
+  payment_method: z.enum(['cash', 'check', 'cib', 'transfer', 'credit']).default('cash'),
+  date: z.string().min(1),
+  reference_note: z.string().optional(),
+  notes: z.string().optional()
+})
+
 export const createPurchaseItemSchema = z.object({
-  product_id: z.string().uuid(),
+  product_id: z.string().optional().nullable(),
   reference: z.string().min(1),
-  brand: z.string().min(1),
-  dimension: z.string().min(1),
+  brand: z.string().optional().default('Générique'),
+  dimension: z.string().optional().default(''),
   quantity: z.number().int().positive(),
   unit_cost: z.number().min(0)
 })
 
 export const createPurchaseSchema = z.object({
-  supplier_id: z.string().uuid(),
+  supplier_id: z.string().min(1),
   supplier_name: z.string().min(1),
   date: z.string().min(1),
+  expected_date: z.string().optional(),
   paid_amount: z.number().min(0).default(0),
+  deposit_amount: z.number().min(0).default(0),
   notes: z.string().optional(),
   items: z.array(createPurchaseItemSchema).min(1)
 })
 
 export const createSaleItemSchema = z.object({
-  product_id: z.string().uuid().nullable().optional(),
-  item_type: z.enum(['product', 'service']),
+  product_id: z.string().nullable().optional(),
+  item_type: z.enum(['product', 'service']).default('product'),
   reference: z.string().min(1),
   designation: z.string().min(1),
   quantity: z.number().int().positive(),
@@ -115,10 +141,10 @@ export const createSaleItemSchema = z.object({
 })
 
 export const createSaleSchema = z.object({
-  customer_id: z.string().uuid().nullable().optional(),
+  customer_id: z.string().nullable().optional(),
   customer_name: z.string().optional(),
   customer_phone: z.string().optional(),
-  vehicle_id: z.string().uuid().nullable().optional(),
+  vehicle_id: z.string().nullable().optional(),
   vehicle_info: z.string().optional(),
   license_plate: z.string().optional(),
   mileage: z.number().optional(),
@@ -133,12 +159,15 @@ export const createSaleSchema = z.object({
 })
 
 export const createQuotationSchema = z.object({
-  customer_id: z.string().uuid().nullable().optional(),
+  customer_id: z.string().nullable().optional(),
   customer_name: z.string().optional(),
   customer_phone: z.string().optional(),
   vehicle_info: z.string().optional(),
   date: z.string().min(1),
   valid_until: z.string().min(1),
+  discount_amount: z.number().min(0).default(0),
+  tax_rate: z.number().min(0).default(19),
+  deposit_amount: z.number().min(0).default(0),
   notes: z.string().optional(),
   items: z.array(createSaleItemSchema).min(1)
 })

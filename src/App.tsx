@@ -7,6 +7,7 @@ import { UpdateModal } from './components/UpdateModal'
 
 // Pages
 import { Dashboard } from './pages/Dashboard'
+import { Pos } from './pages/Pos'
 import { Sales } from './pages/Sales'
 import { Quotations } from './pages/Quotations'
 import { Customers } from './pages/Customers'
@@ -141,6 +142,7 @@ export const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/pos" element={<Pos />} />
           <Route path="/sales" element={<Sales />} />
           <Route path="/quotations" element={<Quotations />} />
           <Route path="/customers" element={<Customers />} />

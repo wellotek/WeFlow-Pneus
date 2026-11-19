@@ -9,6 +9,18 @@ export const CHANNELS = {
   SETTINGS_UPDATE: 'settings:update',
   PROFILE_GET: 'profile:get',
   PROFILE_UPDATE: 'profile:update',
+  TAX_RATES_LIST: 'settings:listTaxRates',
+  TAX_RATES_CREATE: 'settings:createTaxRate',
+  TAX_RATES_UPDATE: 'settings:updateTaxRate',
+  TAX_RATES_DELETE: 'settings:deleteTaxRate',
+
+  // App & Zoom
+  APP_GET_ZOOM: 'app:getZoom',
+  APP_SET_ZOOM: 'app:setZoom',
+
+  // Media
+  MEDIA_UPLOAD_IMAGE: 'media:uploadImage',
+  MEDIA_DELETE_IMAGE: 'media:deleteImage',
 
   // Products & Tires
   PRODUCTS_LIST: 'products:list',
@@ -16,6 +28,7 @@ export const CHANNELS = {
   PRODUCTS_CREATE: 'products:create',
   PRODUCTS_UPDATE: 'products:update',
   PRODUCTS_DELETE: 'products:delete',
+  PRODUCTS_ARCHIVE: 'products:archive',
   PRODUCTS_SEARCH_DIMENSIONS: 'products:searchDimensions',
 
   // Vehicle Compatibility
@@ -37,9 +50,12 @@ export const CHANNELS = {
   CUSTOMERS_CREATE: 'customers:create',
   CUSTOMERS_UPDATE: 'customers:update',
   CUSTOMERS_DELETE: 'customers:delete',
+  CUSTOMERS_ARCHIVE: 'customers:archive',
   CUSTOMERS_GET_VEHICLES: 'customers:getVehicles',
   CUSTOMERS_CREATE_VEHICLE: 'customers:createVehicle',
+  CUSTOMERS_UPDATE_VEHICLE: 'customers:updateVehicle',
   CUSTOMERS_DELETE_VEHICLE: 'customers:deleteVehicle',
+  CUSTOMERS_ARCHIVE_VEHICLE: 'customers:archiveVehicle',
 
   // Suppliers & Purchases
   SUPPLIERS_LIST: 'suppliers:list',
@@ -47,11 +63,16 @@ export const CHANNELS = {
   SUPPLIERS_CREATE: 'suppliers:create',
   SUPPLIERS_UPDATE: 'suppliers:update',
   SUPPLIERS_DELETE: 'suppliers:delete',
+  SUPPLIERS_ARCHIVE: 'suppliers:archive',
+  SUPPLIERS_LIST_PAYMENTS: 'suppliers:listPayments',
+  SUPPLIERS_ADD_PAYMENT: 'suppliers:addPayment',
   PURCHASES_LIST: 'purchases:list',
   PURCHASES_GET: 'purchases:get',
   PURCHASES_CREATE: 'purchases:create',
   PURCHASES_RECEIVE: 'purchases:receive',
+  PURCHASES_RECEIVE_ITEMS: 'purchases:receiveItems',
   PURCHASES_DELETE: 'purchases:delete',
+  PURCHASES_ARCHIVE: 'purchases:archive',
 
   // Sales & POS
   SALES_LIST: 'sales:list',
@@ -59,12 +80,14 @@ export const CHANNELS = {
   SALES_CREATE: 'sales:create',
   SALES_ADD_PAYMENT: 'sales:addPayment',
   SALES_CANCEL: 'sales:cancel',
+  SALES_ARCHIVE: 'sales:archive',
 
   // Quotations
   QUOTATIONS_LIST: 'quotations:list',
   QUOTATIONS_GET: 'quotations:get',
   QUOTATIONS_CREATE: 'quotations:create',
   QUOTATIONS_UPDATE: 'quotations:update',
+  QUOTATIONS_DUPLICATE: 'quotations:duplicate',
   QUOTATIONS_CONVERT_TO_SALE: 'quotations:convertToSale',
   QUOTATIONS_DELETE: 'quotations:delete',
 
@@ -88,7 +111,9 @@ export const CHANNELS = {
   WARRANTIES_LIST: 'warranties:list',
   WARRANTIES_GET: 'warranties:get',
   WARRANTIES_CREATE: 'warranties:create',
+  WARRANTIES_UPDATE: 'warranties:update',
   WARRANTIES_UPDATE_STATUS: 'warranties:updateStatus',
+  WARRANTIES_ARCHIVE: 'warranties:archive',
 
   // Cash Register & Expenses
   CASH_GET_CURRENT_SESSION: 'cash:getCurrentSession',
@@ -116,6 +141,8 @@ export const CHANNELS = {
   DOCUMENTS_PRINT_LABELS: 'documents:printLabels',
   DOCUMENTS_EXPORT_PDF_LABELS: 'documents:exportPdfLabels',
   DOCUMENTS_EXPORT_REPORT_PDF: 'documents:exportReportPdf',
+  DOCUMENTS_EXPORT_CSV: 'documents:exportCsv',
+  DOCUMENTS_EXPORT_LIST_PDF: 'documents:exportListPdf',
   DOCUMENTS_GET_PRINTERS: 'documents:getPrinters',
 
   // Backup & Restore

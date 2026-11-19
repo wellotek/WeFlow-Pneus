@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { Logger } from '../logger'
 import { migration001 } from './migrations/001_initial_schema'
 import { migration002 } from './migrations/002_seed_initial_data'
+import { migration003 } from './migrations/003_v1_2_0_enhancements'
 
 export interface Migration {
   version: number
@@ -9,7 +10,7 @@ export interface Migration {
   up: (db: Database.Database) => void
 }
 
-const MIGRATIONS: Migration[] = [migration001, migration002]
+const MIGRATIONS: Migration[] = [migration001, migration002, migration003]
 
 export function runMigrations(db: Database.Database, logger?: Logger): void {
   db.exec(`

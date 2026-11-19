@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import type Database from 'better-sqlite3'
 import { CHANNELS } from '@shared/channels'
 import {
@@ -13,7 +13,9 @@ import {
   serviceSchema,
   supplierSchema,
   updateProductSchema,
-  warrantyClaimSchema
+  warrantyClaimSchema,
+  taxRateSchema,
+  supplierPaymentSchema
 } from '@shared/schemas'
 import { ProductsRepository } from '../database/repositories/products'
 import { VehiclesRepository } from '../database/repositories/vehicles'
@@ -43,6 +45,8 @@ import {
 } from '../services/documentTemplates'
 import { getAvailablePrinters, printHtml, savePdf } from '../services/printService'
 import { BackupService } from '../services/backupService'
+import { MediaService } from '../services/mediaService'
+import { exportToCsv, exportToListPdf } from '../services/exportService'
 import {
   checkForAppUpdates,
   downloadAppUpdate,
@@ -66,6 +70,7 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
   const dashboardRepo = new DashboardRepository(db)
   const settingsRepo = new SettingsRepository(db)
   const backupService = new BackupService(dbPath, `${userDataDir}/backups`)
+  const mediaService = new MediaService(userDataDir)
 
   function handle<T, R>(channel: string, fn: (payload: T, event: IpcMainInvokeEvent) => Promise<R> | R, requiresLicense = true) {
     ipcMain.handle(channel, async (event, payload: T) => {
@@ -84,6 +89,36 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     })
   }
 
+  // --- APP & ZOOM ---
+  handle(CHANNELS.APP_GET_ZOOM, () => settingsRepo.getZoomFactor(), false)
+  handle(
+    CHANNELS.APP_SET_ZOOM,
+    (factor: number) => {
+      const clamped = Math.min(1.5, Math.max(0.8, Number(factor.toFixed(2))))
+      settingsRepo.setZoomFactor(clamped)
+      for (const win of BrowserWindow.getAllWindows()) {
+        try {
+          win.webContents.setZoomFactor(clamped)
+        } catch {
+          // ignore window disposed
+        }
+      }
+      return clamped
+    },
+    false
+  )
+
+  // --- MEDIA ---
+  handle(
+    CHANNELS.MEDIA_UPLOAD_IMAGE,
+    ({ folder, fileData, fileName }: { folder: 'products' | 'customers' | 'vehicles'; fileData: string; fileName?: string }) => {
+      return mediaService.saveImage(folder, fileData, fileName)
+    }
+  )
+  handle(CHANNELS.MEDIA_DELETE_IMAGE, (filePath: string) => {
+    return mediaService.deleteImage(filePath)
+  })
+
   // --- LICENSE (NO LICENSE CHECK) ---
   handle(CHANNELS.LICENSE_GET_STATUS, () => getLicenseService().getUiState(), false)
   handle(
@@ -95,10 +130,19 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
   )
   handle(CHANNELS.LICENSE_VALIDATE, () => getLicenseService().getUiState(), false)
 
-  // --- SETTINGS & PROFILE ---
+  // --- SETTINGS & PROFILE & TAX RATES ---
   handle(CHANNELS.SETTINGS_GET, () => settingsRepo.getProfile(), false)
   handle(CHANNELS.PROFILE_GET, () => settingsRepo.getProfile(), false)
   handle(CHANNELS.PROFILE_UPDATE, (profile: any) => settingsRepo.updateProfile(profile))
+  handle(CHANNELS.TAX_RATES_LIST, (includeInactive?: boolean) => settingsRepo.listTaxRates(includeInactive))
+  handle(CHANNELS.TAX_RATES_CREATE, (data: any) => {
+    const valid = taxRateSchema.parse(data)
+    return settingsRepo.createTaxRate(valid as any)
+  })
+  handle(CHANNELS.TAX_RATES_UPDATE, ({ id, data }: { id: string; data: any }) => {
+    return settingsRepo.updateTaxRate(id, data)
+  })
+  handle(CHANNELS.TAX_RATES_DELETE, (id: string) => settingsRepo.deleteTaxRate(id))
 
   // --- PRODUCTS & TIRES ---
   handle(CHANNELS.PRODUCTS_LIST, (filter: any) => productsRepo.list(filter))
@@ -112,6 +156,7 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     return productsRepo.update(id, valid as any)
   })
   handle(CHANNELS.PRODUCTS_DELETE, (id: string) => productsRepo.delete(id))
+  handle(CHANNELS.PRODUCTS_ARCHIVE, (id: string) => productsRepo.archive(id))
   handle(CHANNELS.PRODUCTS_SEARCH_DIMENSIONS, (query: string) => productsRepo.searchDimensions(query))
 
   // --- VEHICLES & COMPATIBILITY ---
@@ -142,10 +187,10 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
   )
   handle(CHANNELS.STOCK_GET_SUMMARY, () => {
     const agg = db
-      .prepare('SELECT SUM(stock_quantity) as totalItems, SUM(stock_quantity * buy_price) as totalValue FROM products')
+      .prepare('SELECT SUM(stock_quantity) as totalItems, SUM(stock_quantity * buy_price) as totalValue FROM products WHERE is_archived = 0 OR is_archived IS NULL')
       .get() as any
     const low = db
-      .prepare('SELECT COUNT(*) as count FROM products WHERE stock_quantity <= min_stock_alert')
+      .prepare('SELECT COUNT(*) as count FROM products WHERE stock_quantity <= min_stock_alert AND (is_archived = 0 OR is_archived IS NULL)')
       .get() as any
     return {
       totalItems: agg?.totalItems || 0,
@@ -165,6 +210,7 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     customersRepo.update(id, data)
   )
   handle(CHANNELS.CUSTOMERS_DELETE, (id: string) => customersRepo.delete(id))
+  handle(CHANNELS.CUSTOMERS_ARCHIVE, (id: string) => customersRepo.archive(id))
   handle(CHANNELS.CUSTOMERS_GET_VEHICLES, (customerId: string) =>
     customersRepo.getVehicles(customerId)
   )
@@ -172,7 +218,11 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     const valid = customerVehicleSchema.parse(data)
     return customersRepo.createVehicle(valid as any)
   })
+  handle(CHANNELS.CUSTOMERS_UPDATE_VEHICLE, ({ id, data }: { id: string; data: any }) =>
+    customersRepo.updateVehicle(id, data)
+  )
   handle(CHANNELS.CUSTOMERS_DELETE_VEHICLE, (id: string) => customersRepo.deleteVehicle(id))
+  handle(CHANNELS.CUSTOMERS_ARCHIVE_VEHICLE, (id: string) => customersRepo.archiveVehicle(id))
 
   // --- SUPPLIERS & PURCHASES ---
   handle(CHANNELS.SUPPLIERS_LIST, (search?: string) => suppliersRepo.list(search))
@@ -185,6 +235,13 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     suppliersRepo.update(id, data)
   )
   handle(CHANNELS.SUPPLIERS_DELETE, (id: string) => suppliersRepo.delete(id))
+  handle(CHANNELS.SUPPLIERS_ARCHIVE, (id: string) => suppliersRepo.archive(id))
+  handle(CHANNELS.SUPPLIERS_LIST_PAYMENTS, (supplierId?: string) => suppliersRepo.listPayments(supplierId))
+  handle(CHANNELS.SUPPLIERS_ADD_PAYMENT, (data: any) => {
+    const valid = supplierPaymentSchema.parse(data)
+    return suppliersRepo.addPayment(valid as any)
+  })
+
   handle(CHANNELS.PURCHASES_LIST, () => purchasesRepo.list())
   handle(CHANNELS.PURCHASES_GET, (id: string) => purchasesRepo.getById(id))
   handle(CHANNELS.PURCHASES_CREATE, (data: any) => {
@@ -192,7 +249,11 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     return purchasesRepo.create(valid as any)
   })
   handle(CHANNELS.PURCHASES_RECEIVE, (id: string) => purchasesRepo.receive(id))
+  handle(CHANNELS.PURCHASES_RECEIVE_ITEMS, ({ id, receivedItems }: { id: string; receivedItems: { itemId: string; receivedQty: number }[] }) =>
+    purchasesRepo.receiveItems(id, receivedItems)
+  )
   handle(CHANNELS.PURCHASES_DELETE, (id: string) => purchasesRepo.delete(id))
+  handle(CHANNELS.PURCHASES_ARCHIVE, (id: string) => purchasesRepo.archive(id))
 
   // --- SALES & POS ---
   handle(CHANNELS.SALES_LIST, (filter: any) => salesRepo.list(filter))
@@ -207,6 +268,7 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
       salesRepo.addPayment(saleId, amount, paymentMethod, note)
   )
   handle(CHANNELS.SALES_CANCEL, ({ id, reason }: any) => salesRepo.cancel(id, reason))
+  handle(CHANNELS.SALES_ARCHIVE, (id: string) => salesRepo.archive(id))
 
   // --- QUOTATIONS ---
   handle(CHANNELS.QUOTATIONS_LIST, () => quotesRepo.list())
@@ -218,6 +280,7 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
   handle(CHANNELS.QUOTATIONS_UPDATE, ({ id, data }: { id: string; data: any }) =>
     quotesRepo.update(id, data)
   )
+  handle(CHANNELS.QUOTATIONS_DUPLICATE, (id: string) => quotesRepo.duplicate(id))
   handle(CHANNELS.QUOTATIONS_CONVERT_TO_SALE, (id: string) => quotesRepo.convertToSale(id))
   handle(CHANNELS.QUOTATIONS_DELETE, (id: string) => quotesRepo.delete(id))
 
@@ -250,15 +313,19 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
   handle(CHANNELS.APPOINTMENTS_DELETE, (id: string) => apptsRepo.delete(id))
 
   // --- WARRANTIES & RETURNS ---
-  handle(CHANNELS.WARRANTIES_LIST, () => warrantiesRepo.list())
+  handle(CHANNELS.WARRANTIES_LIST, (filter?: any) => warrantiesRepo.list(filter))
   handle(CHANNELS.WARRANTIES_GET, (id: string) => warrantiesRepo.getById(id))
   handle(CHANNELS.WARRANTIES_CREATE, (data: any) => {
     const valid = warrantyClaimSchema.parse(data)
     return warrantiesRepo.create(valid as any)
   })
+  handle(CHANNELS.WARRANTIES_UPDATE, ({ id, data }: { id: string; data: any }) =>
+    warrantiesRepo.update(id, data)
+  )
   handle(CHANNELS.WARRANTIES_UPDATE_STATUS, ({ id, status, notes, options }: any) =>
     warrantiesRepo.updateStatus(id, status, notes, options)
   )
+  handle(CHANNELS.WARRANTIES_ARCHIVE, (id: string) => warrantiesRepo.archive(id))
 
   // --- CASH REGISTER & EXPENSES ---
   handle(CHANNELS.CASH_GET_CURRENT_SESSION, () => cashRepo.getCurrentSession())
@@ -362,6 +429,15 @@ export function registerIpcHandlers(db: Database.Database, dbPath: string, userD
     const profile = settingsRepo.getProfile()
     const html = renderTireLabelsHtml(labels, profile)
     return savePdf(html, `Etiquettes_Pneus_${Date.now()}.pdf`, 'A4')
+  })
+
+  handle(CHANNELS.DOCUMENTS_EXPORT_CSV, async ({ filename, headers, rows }: any) => {
+    return exportToCsv(filename, headers, rows)
+  })
+
+  handle(CHANNELS.DOCUMENTS_EXPORT_LIST_PDF, async ({ title, columns, rows, options }: any) => {
+    const profile = settingsRepo.getProfile()
+    return exportToListPdf(title, columns, rows, profile, options)
   })
 
   handle(CHANNELS.DOCUMENTS_GET_PRINTERS, () => getAvailablePrinters())

@@ -37,6 +37,16 @@ export interface LicenseUiState {
 }
 
 // --- STORE PROFILE & SETTINGS ---
+export interface TaxRate {
+  id: string
+  rate: number
+  label: string
+  name?: string
+  is_default: boolean
+  is_active: boolean
+  created_at: string
+}
+
 export interface StoreProfile {
   store_name: string
   phone: string
@@ -48,6 +58,8 @@ export interface StoreProfile {
   nis_number?: string
   ai_number?: string
   default_tax_rate: number
+  is_tva_enabled?: boolean
+  zoom_factor?: number
   default_printer?: string
   default_label_printer?: string
   ticket_format: '58mm' | '80mm'
@@ -62,6 +74,7 @@ export interface StoreProfile {
 export type TireType = 'summer' | 'winter' | 'all_season'
 export type TireCondition = 'new' | 'used'
 export type VehicleCategory = 'passenger' | '4x4_suv' | 'commercial' | 'truck' | 'moto'
+export type ProductType = 'pneu' | 'accessoire' | 'chambre_a_air' | 'valve' | 'consommable' | 'divers'
 
 export interface Product {
   id: string
@@ -70,6 +83,7 @@ export interface Product {
   barcode: string
   brand: string
   model_name: string
+  designation?: string
   description?: string
   dimension: string
   width: number
@@ -87,6 +101,9 @@ export interface Product {
   min_stock_alert: number
   location?: string
   dot?: string
+  image_path?: string
+  product_type?: ProductType
+  is_archived?: boolean
   created_at: string
   updated_at: string
 }
@@ -160,6 +177,8 @@ export interface Customer {
   wilaya?: string
   email?: string
   notes?: string
+  photo_path?: string
+  is_archived?: boolean
   balance_due: number
   created_at: string
   vehicle_count?: number
@@ -176,11 +195,26 @@ export interface CustomerVehicle {
   mileage?: number
   front_dimension?: string
   rear_dimension?: string
+  photo_path?: string
+  is_archived?: boolean
   notes?: string
   created_at: string
 }
 
 // --- SUPPLIERS & PURCHASES ---
+export interface SupplierPayment {
+  id: string
+  supplier_id: string
+  purchase_id?: string
+  amount: number
+  payment_type: 'acompte' | 'paiement'
+  payment_method: PaymentMethod
+  date: string
+  reference_note?: string
+  notes?: string
+  created_at: string
+}
+
 export interface Supplier {
   id: string
   name: string
@@ -190,10 +224,14 @@ export interface Supplier {
   contact_person?: string
   email?: string
   balance_due: number
+  total_orders?: number
+  total_paid?: number
+  total_deposits?: number
+  is_archived?: boolean
   created_at: string
 }
 
-export type PurchaseStatus = 'ordered' | 'received' | 'cancelled'
+export type PurchaseStatus = 'ordered' | 'partial_received' | 'received' | 'cancelled'
 
 export interface PurchaseItem {
   id: string
@@ -203,6 +241,7 @@ export interface PurchaseItem {
   brand: string
   dimension: string
   quantity: number
+  received_quantity?: number
   unit_cost: number
   total_cost: number
 }
@@ -210,14 +249,19 @@ export interface PurchaseItem {
 export interface Purchase {
   id: string
   purchase_number: string
+  order_number?: string
   supplier_id: string
   supplier_name: string
   date: string
+  expected_date?: string
   status: PurchaseStatus
   total_amount: number
   paid_amount: number
+  deposit_amount?: number
   balance_due: number
   notes?: string
+  is_archived?: boolean
+  received_at?: string
   created_at: string
   items?: PurchaseItem[]
 }
@@ -270,6 +314,9 @@ export interface Sale {
   payment_method: PaymentMethod
   status: SaleStatus
   notes?: string
+  is_archived?: boolean
+  cancelled_at?: string
+  cancel_reason?: string
   created_at: string
   items?: SaleItem[]
   payments?: SalePayment[]
@@ -287,6 +334,8 @@ export interface QuotationItem {
   designation: string
   quantity: number
   unit_price: number
+  discount_amount?: number
+  tax_rate?: number
   total_line: number
 }
 
@@ -300,11 +349,15 @@ export interface Quotation {
   date: string
   valid_until: string
   subtotal: number
+  discount_amount?: number
+  tax_rate?: number
   tax_amount: number
+  deposit_amount?: number
   total_amount: number
   status: QuotationStatus
   converted_sale_id?: string | null
   notes?: string
+  is_archived?: boolean
   created_at: string
   items?: QuotationItem[]
 }
@@ -398,6 +451,8 @@ export interface WarrantyClaim {
   resolution_notes?: string
   replacement_product_id?: string | null
   refund_amount?: number
+  is_archived?: boolean
+  resolved_at?: string
   created_at: string
 }
 

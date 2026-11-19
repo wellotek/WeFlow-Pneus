@@ -17,13 +17,37 @@ export class WarrantiesRepository {
     return `GAR-${year}-${String(num).padStart(4, '0')}`
   }
 
-  list(): WarrantyClaim[] {
-    return this.db.prepare('SELECT * FROM warranties ORDER BY claim_date DESC, created_at DESC').all() as WarrantyClaim[]
+  list(filter?: { is_archived?: boolean; status?: string }): WarrantyClaim[] {
+    let sql = 'SELECT * FROM warranties WHERE 1=1'
+    const params: any[] = []
+
+    if (filter?.is_archived !== undefined) {
+      sql += ' AND is_archived = ?'
+      params.push(filter.is_archived ? 1 : 0)
+    } else {
+      sql += ' AND (is_archived = 0 OR is_archived IS NULL)'
+    }
+
+    if (filter?.status) {
+      sql += ' AND status = ?'
+      params.push(filter.status)
+    }
+
+    sql += ' ORDER BY claim_date DESC, created_at DESC'
+    const rows = this.db.prepare(sql).all(...params) as any[]
+    return rows.map((r) => ({
+      ...r,
+      is_archived: Boolean(r.is_archived)
+    }))
   }
 
   getById(id: string): WarrantyClaim | null {
-    const row = this.db.prepare('SELECT * FROM warranties WHERE id = ?').get(id)
-    return (row as WarrantyClaim) || null
+    const row = this.db.prepare('SELECT * FROM warranties WHERE id = ?').get(id) as any
+    if (!row) return null
+    return {
+      ...row,
+      is_archived: Boolean(row.is_archived)
+    }
   }
 
   create(data: Omit<WarrantyClaim, 'id' | 'claim_number' | 'created_at'>): WarrantyClaim {
@@ -36,8 +60,8 @@ export class WarrantiesRepository {
           id, claim_number, customer_id, customer_name, customer_phone,
           sale_id, invoice_number, product_id, product_ref,
           purchase_date, claim_date, reason, defect_description, status,
-          resolution_notes, replacement_product_id, refund_amount, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          resolution_notes, replacement_product_id, refund_amount, is_archived, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
       `)
       .run(
         id,
@@ -62,6 +86,46 @@ export class WarrantiesRepository {
     return this.getById(id)!
   }
 
+  update(id: string, data: Partial<WarrantyClaim>): WarrantyClaim {
+    const claim = this.getById(id)
+    if (!claim) throw new Error('Réclamation introuvable')
+
+    const now = new Date().toISOString()
+    const isResolved = data.status && ['resolved', 'closed', 'refunded', 'replaced'].includes(data.status)
+    const resolvedAt = isResolved ? now : claim.resolved_at
+
+    this.db
+      .prepare(`
+        UPDATE warranties SET
+          customer_name = COALESCE(?, customer_name),
+          customer_phone = COALESCE(?, customer_phone),
+          product_ref = COALESCE(?, product_ref),
+          reason = COALESCE(?, reason),
+          defect_description = COALESCE(?, defect_description),
+          status = COALESCE(?, status),
+          resolution_notes = COALESCE(?, resolution_notes),
+          replacement_product_id = COALESCE(?, replacement_product_id),
+          refund_amount = COALESCE(?, refund_amount),
+          resolved_at = COALESCE(?, resolved_at)
+        WHERE id = ?
+      `)
+      .run(
+        data.customer_name ?? null,
+        data.customer_phone ?? null,
+        data.product_ref ?? null,
+        data.reason ?? null,
+        data.defect_description ?? null,
+        data.status ?? null,
+        data.resolution_notes ?? null,
+        data.replacement_product_id ?? null,
+        data.refund_amount ?? null,
+        resolvedAt ?? null,
+        id
+      )
+
+    return this.getById(id)!
+  }
+
   updateStatus(
     id: string,
     status: string,
@@ -73,6 +137,8 @@ export class WarrantiesRepository {
 
     const now = new Date().toISOString()
     const today = now.split('T')[0]
+    const isResolved = ['closed', 'refunded', 'replaced'].includes(status)
+    const resolvedAt = isResolved ? now : claim.resolved_at
 
     const tx = this.db.transaction(() => {
       this.db
@@ -81,16 +147,18 @@ export class WarrantiesRepository {
             status = ?,
             resolution_notes = CASE WHEN ? IS NOT NULL AND ? != '' THEN resolution_notes || '\n' || ? ELSE resolution_notes END,
             replacement_product_id = COALESCE(?, replacement_product_id),
-            refund_amount = COALESCE(?, refund_amount)
+            refund_amount = COALESCE(?, refund_amount),
+            resolved_at = COALESCE(?, resolved_at)
           WHERE id = ?
         `)
         .run(
           status,
-          notes,
-          notes,
-          notes,
+          notes ?? null,
+          notes ?? null,
+          notes ?? null,
           options?.replacementProductId || null,
           options?.refundAmount ?? null,
+          resolvedAt ?? null,
           id
         )
 
@@ -124,5 +192,10 @@ export class WarrantiesRepository {
 
     tx()
     return this.getById(id)!
+  }
+
+  archive(id: string): boolean {
+    const res = this.db.prepare('UPDATE warranties SET is_archived = 1 WHERE id = ?').run(id)
+    return res.changes > 0
   }
 }

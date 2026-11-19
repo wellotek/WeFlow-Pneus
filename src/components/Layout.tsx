@@ -15,7 +15,8 @@ import {
   ShieldAlert,
   Wallet,
   BarChart3,
-  Settings
+  Settings,
+  CreditCard
 } from 'lucide-react'
 import type { LicenseUiState } from '@shared/types'
 import type { UpdateSnapshot } from '@shared/updates'
@@ -46,6 +47,13 @@ const NAV_MODULES: NavModule[] = [
     icon: LayoutDashboard,
     labelFr: 'Tableau de bord',
     labelAr: 'لوحة التحكم'
+  },
+  {
+    id: 'pos',
+    path: '/pos',
+    icon: CreditCard,
+    labelFr: 'Point de Vente (POS)',
+    labelAr: 'نقطة البيع (POS)'
   },
   {
     id: 'sales',

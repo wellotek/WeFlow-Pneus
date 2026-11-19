@@ -16,6 +16,17 @@ async function invoke<T = any>(channel: string, payload?: any): Promise<T> {
 }
 
 const api: WeFlowPneusApi = {
+  app: {
+    getZoom: () => invoke(CHANNELS.APP_GET_ZOOM),
+    setZoom: (factor) => invoke(CHANNELS.APP_SET_ZOOM, factor)
+  },
+
+  media: {
+    uploadImage: (folder, fileData, fileName) =>
+      invoke(CHANNELS.MEDIA_UPLOAD_IMAGE, { folder, fileData, fileName }),
+    deleteImage: (filePath) => invoke(CHANNELS.MEDIA_DELETE_IMAGE, filePath)
+  },
+
   license: {
     getStatus: () => invoke(CHANNELS.LICENSE_GET_STATUS),
     activate: (licenseId, activationCode) => invoke(CHANNELS.LICENSE_ACTIVATE, { licenseId, activationCode }),
@@ -24,7 +35,11 @@ const api: WeFlowPneusApi = {
 
   settings: {
     getProfile: () => invoke(CHANNELS.PROFILE_GET),
-    updateProfile: (profile) => invoke(CHANNELS.PROFILE_UPDATE, profile)
+    updateProfile: (profile) => invoke(CHANNELS.PROFILE_UPDATE, profile),
+    listTaxRates: (includeInactive) => invoke(CHANNELS.TAX_RATES_LIST, includeInactive),
+    createTaxRate: (data) => invoke(CHANNELS.TAX_RATES_CREATE, data),
+    updateTaxRate: (id, data) => invoke(CHANNELS.TAX_RATES_UPDATE, { id, data }),
+    deleteTaxRate: (id) => invoke(CHANNELS.TAX_RATES_DELETE, id)
   },
 
   products: {
@@ -33,6 +48,7 @@ const api: WeFlowPneusApi = {
     create: (data) => invoke(CHANNELS.PRODUCTS_CREATE, data),
     update: (id, data) => invoke(CHANNELS.PRODUCTS_UPDATE, { id, data }),
     delete: (id) => invoke(CHANNELS.PRODUCTS_DELETE, id),
+    archive: (id) => invoke(CHANNELS.PRODUCTS_ARCHIVE, id),
     searchDimensions: (query) => invoke(CHANNELS.PRODUCTS_SEARCH_DIMENSIONS, query)
   },
 
@@ -58,9 +74,12 @@ const api: WeFlowPneusApi = {
     create: (data) => invoke(CHANNELS.CUSTOMERS_CREATE, data),
     update: (id, data) => invoke(CHANNELS.CUSTOMERS_UPDATE, { id, data }),
     delete: (id) => invoke(CHANNELS.CUSTOMERS_DELETE, id),
+    archive: (id) => invoke(CHANNELS.CUSTOMERS_ARCHIVE, id),
     getVehicles: (customerId) => invoke(CHANNELS.CUSTOMERS_GET_VEHICLES, customerId),
     createVehicle: (data) => invoke(CHANNELS.CUSTOMERS_CREATE_VEHICLE, data),
-    deleteVehicle: (id) => invoke(CHANNELS.CUSTOMERS_DELETE_VEHICLE, id)
+    updateVehicle: (id, data) => invoke(CHANNELS.CUSTOMERS_UPDATE_VEHICLE, { id, data }),
+    deleteVehicle: (id) => invoke(CHANNELS.CUSTOMERS_DELETE_VEHICLE, id),
+    archiveVehicle: (id) => invoke(CHANNELS.CUSTOMERS_ARCHIVE_VEHICLE, id)
   },
 
   suppliers: {
@@ -68,7 +87,10 @@ const api: WeFlowPneusApi = {
     get: (id) => invoke(CHANNELS.SUPPLIERS_GET, id),
     create: (data) => invoke(CHANNELS.SUPPLIERS_CREATE, data),
     update: (id, data) => invoke(CHANNELS.SUPPLIERS_UPDATE, { id, data }),
-    delete: (id) => invoke(CHANNELS.SUPPLIERS_DELETE, id)
+    delete: (id) => invoke(CHANNELS.SUPPLIERS_DELETE, id),
+    archive: (id) => invoke(CHANNELS.SUPPLIERS_ARCHIVE, id),
+    listPayments: (supplierId) => invoke(CHANNELS.SUPPLIERS_LIST_PAYMENTS, supplierId),
+    addPayment: (data) => invoke(CHANNELS.SUPPLIERS_ADD_PAYMENT, data)
   },
 
   purchases: {
@@ -76,7 +98,10 @@ const api: WeFlowPneusApi = {
     get: (id) => invoke(CHANNELS.PURCHASES_GET, id),
     create: (data) => invoke(CHANNELS.PURCHASES_CREATE, data),
     receive: (id) => invoke(CHANNELS.PURCHASES_RECEIVE, id),
-    delete: (id) => invoke(CHANNELS.PURCHASES_DELETE, id)
+    receiveItems: (id, receivedItems) =>
+      invoke(CHANNELS.PURCHASES_RECEIVE_ITEMS, { id, receivedItems }),
+    delete: (id) => invoke(CHANNELS.PURCHASES_DELETE, id),
+    archive: (id) => invoke(CHANNELS.PURCHASES_ARCHIVE, id)
   },
 
   sales: {
@@ -85,7 +110,8 @@ const api: WeFlowPneusApi = {
     create: (data) => invoke(CHANNELS.SALES_CREATE, data),
     addPayment: (saleId, amount, paymentMethod, note) =>
       invoke(CHANNELS.SALES_ADD_PAYMENT, { saleId, amount, paymentMethod, note }),
-    cancel: (id, reason) => invoke(CHANNELS.SALES_CANCEL, { id, reason })
+    cancel: (id, reason) => invoke(CHANNELS.SALES_CANCEL, { id, reason }),
+    archive: (id) => invoke(CHANNELS.SALES_ARCHIVE, id)
   },
 
   quotations: {
@@ -93,6 +119,7 @@ const api: WeFlowPneusApi = {
     get: (id) => invoke(CHANNELS.QUOTATIONS_GET, id),
     create: (data) => invoke(CHANNELS.QUOTATIONS_CREATE, data),
     update: (id, data) => invoke(CHANNELS.QUOTATIONS_UPDATE, { id, data }),
+    duplicate: (id) => invoke(CHANNELS.QUOTATIONS_DUPLICATE, id),
     convertToSale: (id) => invoke(CHANNELS.QUOTATIONS_CONVERT_TO_SALE, id),
     delete: (id) => invoke(CHANNELS.QUOTATIONS_DELETE, id)
   },
@@ -122,8 +149,10 @@ const api: WeFlowPneusApi = {
     list: () => invoke(CHANNELS.WARRANTIES_LIST),
     get: (id) => invoke(CHANNELS.WARRANTIES_GET, id),
     create: (data) => invoke(CHANNELS.WARRANTIES_CREATE, data),
+    update: (id, data) => invoke(CHANNELS.WARRANTIES_UPDATE, { id, data }),
     updateStatus: (id, status, notes) =>
-      invoke(CHANNELS.WARRANTIES_UPDATE_STATUS, { id, status, notes })
+      invoke(CHANNELS.WARRANTIES_UPDATE_STATUS, { id, status, notes }),
+    archive: (id) => invoke(CHANNELS.WARRANTIES_ARCHIVE, id)
   },
 
   cash: {
@@ -162,6 +191,10 @@ const api: WeFlowPneusApi = {
     exportPdfLabels: (labels) => invoke(CHANNELS.DOCUMENTS_EXPORT_PDF_LABELS, labels),
     exportReportPdf: (reportType, period) =>
       invoke(CHANNELS.DOCUMENTS_EXPORT_REPORT_PDF, { reportType, period }),
+    exportCsv: (filename, headers, rows) =>
+      invoke(CHANNELS.DOCUMENTS_EXPORT_CSV, { filename, headers, rows }),
+    exportListPdf: (title, columns, rows, options) =>
+      invoke(CHANNELS.DOCUMENTS_EXPORT_LIST_PDF, { title, columns, rows, options }),
     getPrinters: () => invoke(CHANNELS.DOCUMENTS_GET_PRINTERS)
   },
 
